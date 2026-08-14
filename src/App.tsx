@@ -7,6 +7,7 @@ import { buildSampleTree } from './core/sample'
 import { useStore } from './core/store'
 import type { ViewKey } from './core/store'
 import { summarize, validate } from './core/validate'
+import { Modal } from './ui/components'
 import { StatisticsView, MapView } from './ui/views/Analysis'
 import {
   DescendantChart, FanChart, HourglassChart, PedigreeChart, TimelineView,
@@ -119,8 +120,32 @@ export function App() {
   const future = useStore((s) => s.future)
   const init = useStore((s) => s.init)
   const replaceDatabase = useStore((s) => s.replaceDatabase)
+  const workFile = useStore((s) => s.workFile)
+  const backupDue = useStore((s) => s.backupDue)
+  const checkWorkFile = useStore((s) => s.checkWorkFile)
+  const resolveConflict = useStore((s) => s.resolveConflict)
 
   useEffect(() => { init() }, [init])
+
+  /**
+   * Nach Änderungen von anderen Geräten sehen. Ein Abgleichdienst braucht ein
+   * paar Sekunden, bis er eine Datei durchgereicht hat; häufiger als alle
+   * zwanzig Sekunden zu prüfen bringt daher nichts. Zusätzlich wird geprüft,
+   * sobald das Fenster wieder in den Vordergrund kommt – das ist der Moment,
+   * in dem man von einem anderen Gerät zurückkehrt.
+   */
+  useEffect(() => {
+    if (!workFile.handle || workFile.permission !== 'granted') return
+    const timer = setInterval(() => { void checkWorkFile() }, 20000)
+    const onFocus = () => { void checkWorkFile() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+  }, [workFile.handle, workFile.permission, checkWorkFile])
 
   // Beim ersten Start ohne Bestand das Beispiel anbieten, damit die Oberfläche
   // nicht leer und unverständlich dasteht
@@ -229,6 +254,38 @@ export function App() {
         <button className="btn ghost small" disabled={!future.length} onClick={redo} title="Wiederholen (Strg+Umschalt+Z)">
           ↷ Wiederholen
         </button>
+        {backupDue && (
+          <button
+            className="tag warn"
+            style={{ border: 0, cursor: 'pointer' }}
+            title="Seit mehr als zwei Wochen wurde keine Sicherungsdatei angelegt."
+            onClick={() => setView('gedcom')}
+          >
+            Sicherung fällig
+          </button>
+        )}
+
+        {workFile.handle && (
+          <button
+            className={`tag ${workFile.conflict ? 'error' : workFile.permission === 'granted' ? 'ok' : 'warn'}`}
+            style={{ border: 0, cursor: 'pointer', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            title={
+              workFile.conflict
+                ? 'Die Arbeitsdatei wurde von außen geändert – bitte entscheiden, welche Fassung gilt.'
+                : workFile.permission === 'granted'
+                  ? `Arbeitsdatei: ${workFile.name}`
+                  : 'Der Zugriff auf die Arbeitsdatei muss erneut erteilt werden.'
+            }
+            onClick={() => setView('settings')}
+          >
+            {workFile.conflict
+              ? '⚠ Datei abweichend'
+              : workFile.permission === 'granted'
+                ? `${workFile.writing ? '↻' : '⛁'} ${workFile.name}`
+                : '⚠ Zugriff nötig'}
+          </button>
+        )}
+
         <span className="tag" title="Der Bestand wird selbsttätig in der Ablage des Browsers gesichert.">
           {dirty ? 'wird gesichert …' : 'gesichert'}
         </span>
@@ -261,6 +318,46 @@ export function App() {
       </nav>
 
       <main className="main">{body()}</main>
+
+      {workFile.conflict && (
+        <Modal
+          title="Die Arbeitsdatei weicht ab"
+          onClose={() => { /* Ein Konflikt muss entschieden werden */ }}
+          footer={
+            <>
+              <button className="btn" onClick={() => resolveConflict('useLocal')}>
+                Hiesige Fassung behalten
+              </button>
+              <button className="btn primary" onClick={() => resolveConflict('useFile')}>
+                Fassung aus der Datei übernehmen
+              </button>
+            </>
+          }
+        >
+          <p>
+            Ein anderes Gerät hat die Arbeitsdatei geändert, während hier ebenfalls gearbeitet
+            wurde. Damit nichts stillschweigend verlorengeht, muss entschieden werden, welche
+            Fassung gilt.
+          </p>
+          <dl className="kv" style={{ margin: '14px 0' }}>
+            <dt>Hier</dt>
+            <dd>
+              {Object.keys(db.persons).length} Personen, zuletzt geändert{' '}
+              {new Date(db.meta.changed).toLocaleString('de-DE')}
+            </dd>
+            <dt>In der Datei</dt>
+            <dd>
+              {Object.keys(workFile.conflict.fileDb.persons).length} Personen, zuletzt geändert{' '}
+              {new Date(workFile.conflict.fileDb.meta.changed).toLocaleString('de-DE')}
+            </dd>
+          </dl>
+          <p style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>
+            Die verworfene Fassung lässt sich nicht wiederherstellen. Wenn beide Seiten
+            gearbeitet haben, legen Sie vorher über „Datenaustausch“ eine Sicherung an –
+            danach lassen sich die Bestände über die Dublettensuche zusammenführen.
+          </p>
+        </Modal>
+      )}
 
       {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
     </div>

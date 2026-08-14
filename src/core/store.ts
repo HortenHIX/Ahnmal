@@ -9,6 +9,16 @@
 import { create } from 'zustand'
 import { loadLast, saveTree } from './db'
 import { newFamily, newPerson } from './model'
+import {
+  inspectStorage, isBackupDue, lastBackupAt, markBackupDone,
+} from './storage'
+import type { StorageReport } from './storage'
+import {
+  askPermission, checkForExternalChange, chooseCopy, createWorkFile, forgetHandle,
+  isWorkFileSupported, openWorkFile, permissionOf, readWorkFile, restoreHandle,
+  writeWorkFile,
+} from './workfile'
+import type { WorkFileHandle } from './workfile'
 import { emptyDatabase } from './types'
 import type {
   Arms, Database, Family, ID, MediaItem, Person, Place, Repository,
@@ -53,6 +63,35 @@ interface HistoryEntry {
   db: Database
 }
 
+export interface WorkFileState {
+  /** Ob der Browser unmittelbaren Dateizugriff überhaupt beherrscht. */
+  supported: boolean
+  handle: WorkFileHandle | null
+  name: string | null
+  permission: 'granted' | 'prompt' | 'denied' | null
+  lastWrittenAt: number | null
+  /** Änderungszeit der Datei beim letzten eigenen Zugriff. */
+  lastKnownModified: number | null
+  writing: boolean
+  /**
+   * Ein anderes Gerät hat die Datei verändert, während hier ungespeicherte
+   * Änderungen vorliegen. Beide Fassungen bleiben erhalten, bis entschieden ist.
+   */
+  conflict: { fileDb: Database; fileModified: number } | null
+  error?: string
+}
+
+const NO_WORK_FILE: WorkFileState = {
+  supported: false,
+  handle: null,
+  name: null,
+  permission: null,
+  lastWrittenAt: null,
+  lastKnownModified: null,
+  writing: false,
+  conflict: null,
+}
+
 interface State {
   db: Database
   view: ViewKey
@@ -66,7 +105,19 @@ interface State {
   ready: boolean
   toast?: { text: string; kind: 'info' | 'error' | 'success' }
 
+  workFile: WorkFileState
+  storage: StorageReport | null
+  backupDue: boolean
+
   init: () => Promise<void>
+  refreshStorage: () => Promise<void>
+  markBackup: () => void
+  connectWorkFile: (mode: 'create' | 'open') => Promise<void>
+  reconnectWorkFile: () => Promise<void>
+  disconnectWorkFile: () => Promise<void>
+  writeWorkFileNow: () => Promise<void>
+  checkWorkFile: () => Promise<void>
+  resolveConflict: (choice: 'useFile' | 'useLocal') => Promise<void>
   apply: (label: string, fn: (db: Database) => Database) => void
   replaceDatabase: (db: Database, label: string) => void
   undo: () => void
@@ -102,6 +153,7 @@ interface State {
 const HISTORY_LIMIT = 60
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+let fileTimer: ReturnType<typeof setTimeout> | null = null
 
 const SETTINGS_KEY = 'wappenbrief.settings'
 
@@ -123,10 +175,202 @@ export const useStore = create<State>((set, get) => ({
   future: [],
   dirty: false,
   ready: false,
+  workFile: { ...NO_WORK_FILE, supported: isWorkFileSupported() },
+  storage: null,
+  backupDue: false,
 
   async init() {
-    const db = await loadLast()
-    set({ db, ready: true, selectedPerson: db.meta.rootPersonId })
+    let db = await loadLast()
+    const supported = isWorkFileSupported()
+    let workFile: WorkFileState = { ...NO_WORK_FILE, supported }
+
+    // Einen früher gewählten Dateizeiger wiederaufnehmen. Die Erlaubnis
+    // überlebt den Neustart nicht immer; dann muss die Nutzerin sie erneut
+    // erteilen, was nur aus einer Benutzeraktion heraus möglich ist.
+    if (supported) {
+      const handle = await restoreHandle()
+      if (handle) {
+        const permission = await permissionOf(handle)
+        workFile = { ...workFile, handle, name: handle.name, permission }
+        if (permission === 'granted') {
+          try {
+            const { db: fileDb, modified } = await readWorkFile(handle)
+            const choice = chooseCopy(db.meta.changed, fileDb.meta.changed)
+            if (choice === 'useFile') db = fileDb
+            workFile = { ...workFile, lastKnownModified: modified }
+            if (choice === 'useLocal') {
+              // Die Ablage im Browser ist neuer – Datei nachziehen
+              const m = await writeWorkFile(handle, db)
+              workFile = { ...workFile, lastKnownModified: m, lastWrittenAt: Date.now() }
+            }
+          } catch (err) {
+            workFile = { ...workFile, error: (err as Error).message }
+          }
+        }
+      }
+    }
+
+    set({
+      db,
+      ready: true,
+      selectedPerson: db.meta.rootPersonId,
+      workFile,
+      backupDue: isBackupDue(
+        lastBackupAt(), Date.now(),
+        workFile.permission === 'granted',
+        Object.keys(db.persons).length,
+      ),
+    })
+
+    // Der Zustand der Ablage ist für die Beurteilung wichtig, aber nicht
+    // dringend – er wird nachgeladen, damit der Start nicht darauf wartet
+    inspectStorage().then((storage) => set({ storage })).catch(() => { /* ohne Auskunft weiter */ })
+  },
+
+  async refreshStorage() {
+    try {
+      set({ storage: await inspectStorage() })
+    } catch {
+      set({ storage: null })
+    }
+  },
+
+  markBackup() {
+    markBackupDone()
+    set({ backupDue: false })
+  },
+
+  async connectWorkFile(mode) {
+    const { db, notify } = get()
+    try {
+      const handle = mode === 'create'
+        ? await createWorkFile(db.meta.name)
+        : await openWorkFile()
+      if (!handle) return
+
+      if (mode === 'open') {
+        // Beim Öffnen gilt der Inhalt der Datei, sofern er neuer ist
+        const { db: fileDb, modified } = await readWorkFile(handle)
+        const choice = chooseCopy(db.meta.changed, fileDb.meta.changed)
+        if (choice === 'useFile') {
+          get().replaceDatabase(fileDb, 'Aus Arbeitsdatei geladen')
+          notify(`Arbeitsdatei „${handle.name}“ geladen.`, 'success')
+        } else {
+          const m = await writeWorkFile(handle, db)
+          set((s) => ({ workFile: { ...s.workFile, lastKnownModified: m, lastWrittenAt: Date.now() } }))
+          notify('Arbeitsdatei verbunden; der hiesige Bestand war neuer und wurde geschrieben.', 'info')
+        }
+        set((s) => ({
+          workFile: {
+            ...s.workFile, handle, name: handle.name, permission: 'granted',
+            lastKnownModified: modified, error: undefined, conflict: null,
+          },
+          backupDue: false,
+        }))
+      } else {
+        const m = await writeWorkFile(handle, db)
+        set({
+          workFile: {
+            ...NO_WORK_FILE, supported: true, handle, name: handle.name, permission: 'granted',
+            lastKnownModified: m, lastWrittenAt: Date.now(),
+          },
+          backupDue: false,
+        })
+        notify(`Arbeitsdatei „${handle.name}“ angelegt.`, 'success')
+      }
+    } catch (err) {
+      // Ein Abbruch im Dateiauswahlfenster ist kein Fehler
+      if ((err as DOMException)?.name === 'AbortError') return
+      notify(`Die Arbeitsdatei ließ sich nicht verbinden: ${(err as Error).message}`, 'error')
+    }
+  },
+
+  async reconnectWorkFile() {
+    const { workFile, db, notify } = get()
+    if (!workFile.handle) return
+    const permission = await askPermission(workFile.handle)
+    set((s) => ({ workFile: { ...s.workFile, permission } }))
+    if (permission !== 'granted') {
+      notify('Der Zugriff auf die Arbeitsdatei wurde nicht erteilt.', 'error')
+      return
+    }
+    try {
+      const { db: fileDb, modified } = await readWorkFile(workFile.handle)
+      if (chooseCopy(db.meta.changed, fileDb.meta.changed) === 'useFile') {
+        get().replaceDatabase(fileDb, 'Aus Arbeitsdatei geladen')
+        notify('Neuere Fassung aus der Arbeitsdatei übernommen.', 'success')
+      }
+      set((s) => ({ workFile: { ...s.workFile, lastKnownModified: modified, error: undefined } }))
+    } catch (err) {
+      set((s) => ({ workFile: { ...s.workFile, error: (err as Error).message } }))
+    }
+  },
+
+  async disconnectWorkFile() {
+    await forgetHandle()
+    set({ workFile: { ...NO_WORK_FILE, supported: isWorkFileSupported() } })
+    get().notify('Die Arbeitsdatei ist getrennt. Der Bestand bleibt in der Browserablage.', 'info')
+  },
+
+  async writeWorkFileNow() {
+    const { workFile, db } = get()
+    if (!workFile.handle || workFile.permission !== 'granted' || workFile.conflict) return
+    set((s) => ({ workFile: { ...s.workFile, writing: true } }))
+    try {
+      // Vor dem Schreiben prüfen, ob ein anderes Gerät zuvorgekommen ist
+      const { changed, modified } = await checkForExternalChange(workFile.handle, workFile.lastKnownModified)
+      if (changed) {
+        const { db: fileDb } = await readWorkFile(workFile.handle)
+        set((s) => ({
+          workFile: { ...s.workFile, writing: false, conflict: { fileDb, fileModified: modified } },
+        }))
+        get().notify('Die Arbeitsdatei wurde von außen geändert. Bitte entscheiden, welche Fassung gilt.', 'error')
+        return
+      }
+      const m = await writeWorkFile(workFile.handle, db)
+      set((s) => ({
+        workFile: { ...s.workFile, writing: false, lastKnownModified: m, lastWrittenAt: Date.now(), error: undefined },
+      }))
+    } catch (err) {
+      set((s) => ({ workFile: { ...s.workFile, writing: false, error: (err as Error).message } }))
+      get().notify(`Die Arbeitsdatei ließ sich nicht schreiben: ${(err as Error).message}`, 'error')
+    }
+  },
+
+  async checkWorkFile() {
+    const { workFile, db, dirty } = get()
+    if (!workFile.handle || workFile.permission !== 'granted' || workFile.conflict || workFile.writing) return
+    try {
+      const { changed, modified } = await checkForExternalChange(workFile.handle, workFile.lastKnownModified)
+      if (!changed) return
+      const { db: fileDb } = await readWorkFile(workFile.handle)
+      if (dirty && chooseCopy(db.meta.changed, fileDb.meta.changed) !== 'useFile') {
+        // Beide Seiten haben gearbeitet – das muss die Nutzerin entscheiden
+        set((s) => ({ workFile: { ...s.workFile, conflict: { fileDb, fileModified: modified } } }))
+        return
+      }
+      get().replaceDatabase(fileDb, 'Aus Arbeitsdatei aktualisiert')
+      set((s) => ({ workFile: { ...s.workFile, lastKnownModified: modified } }))
+      get().notify('Änderung von einem anderen Gerät übernommen.', 'info')
+    } catch {
+      // Vorübergehende Lesefehler beim Abgleich sind nicht ungewöhnlich
+    }
+  },
+
+  async resolveConflict(choice) {
+    const { workFile } = get()
+    if (!workFile.conflict || !workFile.handle) return
+    const { fileDb, fileModified } = workFile.conflict
+    if (choice === 'useFile') {
+      get().replaceDatabase(fileDb, 'Fassung aus der Arbeitsdatei übernommen')
+      set((s) => ({ workFile: { ...s.workFile, conflict: null, lastKnownModified: fileModified } }))
+      get().notify('Die Fassung aus der Arbeitsdatei gilt nun.', 'success')
+      return
+    }
+    // Eigene Fassung durchsetzen: erst Konflikt aufheben, dann schreiben
+    set((s) => ({ workFile: { ...s.workFile, conflict: null, lastKnownModified: fileModified } }))
+    await get().writeWorkFileNow()
+    get().notify('Die hiesige Fassung wurde in die Arbeitsdatei geschrieben.', 'success')
   },
 
   apply(label, fn) {
@@ -383,4 +627,13 @@ function scheduleSave(get: () => State) {
       get().notify('Die Ablage im Browser ist nicht verfügbar. Bitte über „Sichern“ eine Datei anlegen.', 'error')
     })
   }, 800)
+
+  // Die Arbeitsdatei wird etwas später beschrieben als die Browserablage:
+  // Ein Schreibvorgang auf die Platte ist teurer und darf beim Tippen nicht
+  // bei jedem Zeichen anlaufen.
+  const wf = get().workFile
+  if (wf.handle && wf.permission === 'granted' && !wf.conflict) {
+    if (fileTimer) clearTimeout(fileTimer)
+    fileTimer = setTimeout(() => { void get().writeWorkFileNow() }, 2500)
+  }
 }

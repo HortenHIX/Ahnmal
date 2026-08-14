@@ -11,6 +11,7 @@ import {
 } from '../../core/model'
 import { ancestorsWithKekule, kekuleLine } from '../../core/relations'
 import { buildSampleTree } from '../../core/sample'
+import { formatBytes } from '../../core/storage'
 import { useStore } from '../../core/store'
 import { emptyDatabase } from '../../core/types'
 import type { ID } from '../../core/types'
@@ -27,6 +28,7 @@ export function GedcomView() {
   const replaceDatabase = useStore((s) => s.replaceDatabase)
   const apply = useStore((s) => s.apply)
   const notify = useStore((s) => s.notify)
+  const markBackup = useStore((s) => s.markBackup)
   const fileRef = useRef<HTMLInputElement>(null)
   const [report, setReport] = useState<ImportReport | null>(null)
   const [mode, setMode] = useState<'replace' | 'merge'>('replace')
@@ -155,6 +157,9 @@ export function GedcomView() {
                 className="btn"
                 onClick={() => {
                   downloadText(`${db.meta.name}.json`, exportJSON(db), 'application/json')
+                  // Nur die Vollsicherung gilt als Sicherung: GEDCOM verliert
+                  // Wappen, Aufgaben und Forschungsprotokoll
+                  markBackup()
                   notify('Vollständige Sicherung erzeugt.', 'success')
                 }}
               >
@@ -420,6 +425,171 @@ export function ReportsView() {
 }
 
 // ---------------------------------------------------------------------------
+// Arbeitsdatei und Ablage
+// ---------------------------------------------------------------------------
+
+/**
+ * Bedienfeld für die Arbeitsdatei. Sie ist der Weg, von mehreren Geräten aus
+ * am selben Bestand zu arbeiten, ohne die Daten einem fremden Server zu
+ * überlassen: Die Datei liegt in einem Ordner, den ein Abgleichdienst der
+ * Nutzerin betreut.
+ */
+function WorkFilePanel() {
+  const wf = useStore((s) => s.workFile)
+  const connectWorkFile = useStore((s) => s.connectWorkFile)
+  const reconnectWorkFile = useStore((s) => s.reconnectWorkFile)
+  const disconnectWorkFile = useStore((s) => s.disconnectWorkFile)
+  const writeWorkFileNow = useStore((s) => s.writeWorkFileNow)
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h3>Arbeitsdatei</h3>
+        {wf.name && wf.permission === 'granted' && <span className="tag ok">verbunden</span>}
+        {wf.name && wf.permission !== 'granted' && <span className="tag warn">Zugriff nötig</span>}
+      </div>
+      <div className="panel-body">
+        <p style={{ fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.6, marginTop: 0 }}>
+          Legen Sie die Arbeitsdatei in einen Ordner, den Dropbox, OneDrive oder Nextcloud
+          abgleicht. Dann arbeiten Sie von jedem Gerät am selben Bestand, und der Abgleich
+          läuft über Ihren Ordner – nicht über einen Server dieses Programms.
+        </p>
+
+        {!wf.supported ? (
+          <p style={{ fontSize: 13, color: 'var(--warn)', lineHeight: 1.6 }}>
+            Dieser Browser beherrscht den unmittelbaren Dateizugriff nicht. Er ist in Chrome
+            und Edge vorhanden, in Firefox und Safari nicht. Hier bleibt es beim Sichern und
+            Einlesen von Hand über „Datenaustausch“.
+          </p>
+        ) : !wf.handle ? (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn primary" onClick={() => connectWorkFile('create')}>
+              Neue Arbeitsdatei anlegen
+            </button>
+            <button className="btn" onClick={() => connectWorkFile('open')}>
+              Bestehende öffnen
+            </button>
+          </div>
+        ) : (
+          <>
+            <dl className="kv" style={{ marginBottom: 12 }}>
+              <dt>Datei</dt>
+              <dd style={{ fontFamily: 'var(--mono)', fontSize: 12.5 }}>{wf.name}</dd>
+              <dt>Zuletzt geschrieben</dt>
+              <dd>
+                {wf.lastWrittenAt
+                  ? new Date(wf.lastWrittenAt).toLocaleTimeString('de-DE')
+                  : 'in dieser Sitzung noch nicht'}
+              </dd>
+              {wf.error && (
+                <>
+                  <dt>Fehler</dt>
+                  <dd style={{ color: 'var(--error)' }}>{wf.error}</dd>
+                </>
+              )}
+            </dl>
+
+            {wf.permission !== 'granted' && (
+              <p style={{ fontSize: 13, color: 'var(--warn)', lineHeight: 1.6 }}>
+                Der Browser hat die Zugriffserlaubnis nach dem Neustart zurückgesetzt. Das ist
+                so vorgesehen und muss einmal je Sitzung bestätigt werden.
+              </p>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {wf.permission !== 'granted' && (
+                <button className="btn primary" onClick={reconnectWorkFile}>
+                  Zugriff erneut erteilen
+                </button>
+              )}
+              {wf.permission === 'granted' && (
+                <button className="btn" disabled={wf.writing} onClick={writeWorkFileNow}>
+                  {wf.writing ? 'schreibt …' : 'Jetzt schreiben'}
+                </button>
+              )}
+              <ConfirmButton
+                className="btn danger"
+                label="Trennen"
+                message="Die Verbindung zur Arbeitsdatei wird gelöst. Die Datei selbst bleibt erhalten, und der Bestand bleibt in der Browserablage."
+                onConfirm={() => { void disconnectWorkFile() }}
+              />
+            </div>
+
+            <p style={{ fontSize: 12, color: 'var(--ink-faint)', lineHeight: 1.55, marginBottom: 0, marginTop: 12 }}>
+              Änderungen werden wenige Sekunden nach der letzten Eingabe geschrieben. Hat ein
+              anderes Gerät die Datei zwischenzeitlich verändert, wird gefragt, welche Fassung
+              gilt – überschrieben wird nichts stillschweigend.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Zeigt, wie verlässlich die Browserablage auf diesem Gerät ist. */
+function StoragePanel() {
+  const storage = useStore((s) => s.storage)
+  const refreshStorage = useStore((s) => s.refreshStorage)
+  const backupDue = useStore((s) => s.backupDue)
+  const setView = useStore((s) => s.setView)
+
+  const label: Record<string, string> = {
+    persistent: 'dauerhaft zugesagt',
+    'best-effort': 'nicht zugesagt',
+    unavailable: 'nicht feststellbar',
+  }
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h3>Browserablage</h3>
+        <button className="btn small" onClick={refreshStorage}>Neu prüfen</button>
+      </div>
+      <div className="panel-body">
+        {!storage ? (
+          <p style={{ color: 'var(--ink-faint)' }}>wird ermittelt …</p>
+        ) : (
+          <>
+            <dl className="kv" style={{ marginBottom: 10 }}>
+              <dt>Dauerhaftigkeit</dt>
+              <dd>
+                <span className={`tag ${storage.persistence === 'persistent' ? 'ok' : 'warn'}`}>
+                  {label[storage.persistence]}
+                </span>
+              </dd>
+              <dt>Belegt</dt>
+              <dd>
+                {formatBytes(storage.usage)}
+                {storage.quota !== undefined && ` von ${formatBytes(storage.quota)}`}
+              </dd>
+            </dl>
+
+            {storage.warnings.map((w, i) => (
+              <p key={i} style={{ fontSize: 12.5, color: 'var(--warn)', lineHeight: 1.55 }}>{w}</p>
+            ))}
+
+            {backupDue && (
+              <div style={{ background: 'var(--warn-soft)', borderRadius: 6, padding: 10, marginTop: 8 }}>
+                <strong style={{ color: 'var(--warn)' }}>Sicherung fällig.</strong>{' '}
+                <span style={{ fontSize: 13 }}>
+                  Seit mehr als zwei Wochen wurde keine Datei gesichert.
+                </span>
+                <div style={{ marginTop: 8 }}>
+                  <button className="btn small" onClick={() => setView('gedcom')}>
+                    Zum Datenaustausch
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Einstellungen
 // ---------------------------------------------------------------------------
 
@@ -561,6 +731,9 @@ export function SettingsView() {
             </div>
           </div>
         </div>
+
+        <WorkFilePanel />
+        <StoragePanel />
 
         <div className="panel">
           <div className="panel-head"><h3>Über das Programm</h3></div>

@@ -10,9 +10,11 @@ import { emptyDatabase } from './types'
 import type { Database } from './types'
 
 const DB_NAME = 'wappenbrief'
-const DB_VERSION = 1
+// Fassung 2 ergänzt die Ablage für den Zeiger auf die Arbeitsdatei
+const DB_VERSION = 2
 const STORE = 'trees'
 const BLOBS = 'blobs'
+const HANDLES = 'handles'
 
 let handle: IDBDatabase | null = null
 
@@ -24,6 +26,7 @@ function open(): Promise<IDBDatabase> {
       const d = req.result
       if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: 'id' })
       if (!d.objectStoreNames.contains(BLOBS)) d.createObjectStore(BLOBS)
+      if (!d.objectStoreNames.contains(HANDLES)) d.createObjectStore(HANDLES)
     }
     req.onsuccess = () => { handle = req.result; resolve(req.result) }
     req.onerror = () => reject(req.error)
@@ -87,6 +90,36 @@ export async function loadLast(): Promise<Database> {
   const trees = await listTrees()
   if (!trees.length) return emptyDatabase()
   return (await loadTree(trees[0].id)) ?? emptyDatabase()
+}
+
+// ---------------------------------------------------------------------------
+// Zeiger auf die Arbeitsdatei
+// ---------------------------------------------------------------------------
+
+/**
+ * Dateizeiger lassen sich in IndexedDB ablegen und überleben damit das
+ * Schließen des Browsers. Die Zugriffserlaubnis überlebt nicht mit – sie wird
+ * beim nächsten Start neu erfragt.
+ */
+export async function saveHandle(key: string, handle: unknown): Promise<void> {
+  await tx(HANDLES, 'readwrite', (s) => s.put(handle as never, key))
+}
+
+export async function loadHandle<T>(key: string): Promise<T | null> {
+  try {
+    const v = await tx<T | undefined>(HANDLES, 'readonly', (s) => s.get(key) as IDBRequest<T | undefined>)
+    return v ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function clearHandle(key: string): Promise<void> {
+  try {
+    await tx(HANDLES, 'readwrite', (s) => s.delete(key))
+  } catch {
+    // Fehlt die Ablage, ist auch nichts zu löschen
+  }
 }
 
 // ---------------------------------------------------------------------------

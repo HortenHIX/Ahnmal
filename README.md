@@ -184,6 +184,47 @@ Generationsüberschriften bleiben bei ihrem ersten Eintrag.
 - **Berichte**: Ahnenliste nach Kekulé, Nachkommenliste, Personenblatt,
   Ortsliste, Quellenverzeichnis
 
+## Von mehreren Geräten arbeiten
+
+Die Browserablage gehört **einem Browser auf einem Gerät**. Firefox und Chrome
+auf demselben Rechner sind zwei getrennte Bestände, die einander nicht sehen;
+ebenso Laptop und Telefon. Dafür gibt es zwei Wege.
+
+### Arbeitsdatei in einem Sync-Ordner (empfohlen)
+
+Unter *Einstellungen → Arbeitsdatei* legen Sie eine Datei an – am besten in
+einem Ordner, den Dropbox, OneDrive oder Nextcloud abgleicht. Danach schreibt
+das Programm jede Änderung dorthin zurück, wie eine Textverarbeitung. Auf dem
+zweiten Gerät öffnen Sie dieselbe Datei über *Bestehende öffnen*.
+
+Den Abgleich zwischen den Geräten übernimmt Ihr Ordner. Es gibt weiterhin
+keinen Server dieses Programms, der Ihre Daten sähe.
+
+- Geschrieben wird wenige Sekunden nach der letzten Eingabe.
+- Änderungen von einem anderen Gerät werden übernommen, sobald das Fenster
+  wieder in den Vordergrund kommt, spätestens nach zwanzig Sekunden.
+- Haben **beide** Seiten gearbeitet, fragt das Programm, welche Fassung gilt,
+  und nennt zu beiden Personenzahl und Änderungszeit. Stillschweigend
+  überschrieben wird nichts.
+- Nach einem Neustart des Browsers muss der Dateizugriff einmal bestätigt
+  werden. Das ist eine Sicherheitsvorgabe des Browsers und lässt sich nicht
+  umgehen.
+
+Vorausgesetzt wird die File System Access API: **Chrome und Edge** haben sie,
+**Firefox und Safari** nicht. Dort bleibt es beim zweiten Weg.
+
+### Sichern und einlesen von Hand
+
+*Datenaustausch → Vollsicherung (JSON)*, die Datei auf das andere Gerät
+bringen, dort *Datenaustausch → JSON-Sicherung wählen*.
+
+Nehmen Sie **JSON, nicht GEDCOM**: GEDCOM kennt Wappen, Aufgaben und
+Forschungsprotokoll nicht.
+
+Hier gibt es keine Konflikterkennung. Behandeln Sie einen Browser als
+Arbeitsplatz und die übrigen als Kopien — wer auf zwei Geräten parallel
+arbeitet, verliert beim nächsten Einlesen eine Seite.
+
 ## Datenschutz
 
 Der gesamte Bestand liegt in der IndexedDB des Browsers auf dem eigenen Rechner.
@@ -202,15 +243,32 @@ Sicherungen außerhalb des Browsers legen Sie unter *Datenaustausch* an. Wird de
 Browserspeicher gelöscht, ist der Bestand weg – wie bei jeder lokal
 gespeicherten Datei ohne Sicherungskopie.
 
+### Wie verlässlich ist die Browserablage?
+
+*Einstellungen → Browserablage* zeigt es. Das Programm fordert beim Start
+dauerhaften Speicher an (`navigator.storage.persist()`); ohne diese Zusage darf
+der Browser die Ablage bei Platzmangel räumen. Angezeigt werden außerdem der
+belegte Platz und Warnungen zur Plattform:
+
+- **Safari auf iPhone und iPad** löscht Websitedaten nach etwa sieben Tagen ohne
+  Besuch der Seite. Dort ist die Ablage keine Aufbewahrung, sondern ein
+  Arbeitsspeicher. Die Warnung erscheint auch, wenn sich ein iPad als Macintosh
+  meldet – erkennbar an der Berührungsfähigkeit.
+- **Privates Fenster**: Ein auffällig kleines Speicherkontingent wird gemeldet,
+  denn dort ist beim Schließen alles verworfen.
+- Ohne verbundene Arbeitsdatei mahnt das Programm nach zwei Wochen ohne
+  Sicherung – sichtbar als „Sicherung fällig“ in der Kopfleiste.
+
 ## Aufbau des Quelltexts
 
 ```
 src/
-  core/        Datenmodell, Datumslogik, Verwandtschaft, Prüfungen, Dubletten, Ablage
+  core/        Datenmodell, Datumslogik, Verwandtschaft, Prüfungen, Dubletten,
+               Ablage, Arbeitsdatei
   gedcom/      Zerleger, Import, Export
   heraldry/    Tinkturen, Figurenkatalog, Blasonierungs-Parser, Schildgeometrie, Renderer
   ui/          Bausteine und Ansichten
-test/          Prüfläufe für Datumslogik, Blasonierung und Genealogie
+test/          Prüfläufe für Datumslogik, Blasonierung, Genealogie und Arbeitsdatei
 ```
 
 Das Datenmodell in `src/core/types.ts` ist nah an GEDCOM gehalten, damit der
