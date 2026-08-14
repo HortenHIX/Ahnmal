@@ -4,7 +4,7 @@
 
 import { useMemo, useRef, useState } from 'react'
 import { deleteTree, downloadText, exportJSON, importJSON, listTrees, loadTree, readFile } from '../../core/db'
-import { formatDate } from '../../core/dates'
+import { formatDate, formatDateWithPreposition } from '../../core/dates'
 import {
   ATTRIBUTE_LABELS, birthEvent, childrenOf, deathEvent, displayName, eventLabel,
   isProbablyLiving, lifespan, parentsOf, spousesOf,
@@ -307,7 +307,7 @@ export function ReportsView() {
           const marr = family.events.find((e) => e.type === 'MARR')
           lines.push(
             `${'  '.repeat(depth + 1)}⚭ ${sp ? displayName(sp) : 'unbekannt'}`
-            + (marr?.date ? ` am ${formatDate(marr.date, true)}` : ''),
+            + (marr?.date ? ` ${formatDateWithPreposition(marr.date, true)}` : ''),
           )
           for (const c of family.children) {
             walk(c.personId, depth + 1, `${prefix}${i}.`, seen)
@@ -338,7 +338,7 @@ export function ReportsView() {
       'Verbindungen:',
       ...spousesOf(db, person.id).map(({ person: sp, family }) => {
         const marr = family.events.find((e) => e.type === 'MARR')
-        return `  ⚭ ${sp ? displayName(sp) : 'unbekannt'}${marr?.date ? ` am ${formatDate(marr.date, true)}` : ''}`
+        return `  ⚭ ${sp ? displayName(sp) : 'unbekannt'}${marr?.date ? ` ${formatDateWithPreposition(marr.date, true)}` : ''}`
       }),
       '',
       'Kinder:',

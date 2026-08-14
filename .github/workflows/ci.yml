@@ -1,0 +1,29 @@
+name: Prüfung
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Abhängigkeiten einrichten
+        run: npm ci
+
+      - name: Typprüfung
+        run: npm run typecheck
+
+      - name: Prüfläufe
+        run: npm test
+
+      - name: Auslieferungsfassung bauen
+        run: npm run build

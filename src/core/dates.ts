@@ -243,6 +243,23 @@ export function formatDate(d: GDate | undefined | null, long = false): string {
   }
 }
 
+/**
+ * Datumsangabe mit passender Präposition für den Fließtext.
+ *
+ * „am 14.02.1758“, aber „um 1730“ und „vor 1750“: Die Präposition „am“ passt
+ * nur zu einem taggenauen Datum. Ohne diese Unterscheidung entsteht in
+ * Berichten der Unsinn „am um 1730“.
+ */
+export function formatDateWithPreposition(d: GDate | undefined | null, long = false): string {
+  if (!d) return ''
+  const text = formatDate(d, long)
+  if (!text) return ''
+  if (d.modifier !== 'exact') return text
+  // Ohne Tagesangabe heißt es „im August 1723“ beziehungsweise „im Jahr 1723“
+  if (d.from?.day === undefined) return d.from?.month === undefined ? `${text}` : `im ${text}`
+  return `am ${text}`
+}
+
 /** Serialisiert nach GEDCOM. */
 export function dateToGedcom(d: GDate | undefined | null): string {
   if (!d) return ''

@@ -1,0 +1,69 @@
+# Veröffentlichung auf GitHub Pages.
+#
+# Ausgeliefert werden ausschließlich statische Dateien. Die Anwendung bleibt
+# auch unter einer öffentlichen Adresse ohne Server: Der Bestand liegt in der
+# IndexedDB des jeweiligen Browsers und wird nirgendwohin übertragen.
+#
+# Einmalige Einrichtung im Repository:
+#   Settings → Pages → Build and deployment → Source: „GitHub Actions“
+
+name: Veröffentlichen
+
+on:
+  push:
+    branches: [main]
+  # Erlaubt das Veröffentlichen aus einem beliebigen Zweig von Hand,
+  # bevor die Arbeit nach main übernommen wurde
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Läuft eine Veröffentlichung bereits, wird sie nicht abgebrochen, sondern
+# die neuere dahinter eingereiht
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  bauen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Abhängigkeiten einrichten
+        run: npm ci
+
+      - name: Prüfläufe
+        run: npm test
+
+      - name: Bauen
+        run: npm run build
+
+      # Ohne diese Datei entfernt GitHub Pages Verzeichnisse mit führendem
+      # Unterstrich – Vite legt dort keine an, die Datei kostet aber nichts
+      - name: Jekyll abschalten
+        run: touch dist/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  veroeffentlichen:
+    needs: bauen
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

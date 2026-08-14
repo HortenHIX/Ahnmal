@@ -19,7 +19,7 @@ export type ViewKey =
   | 'dashboard' | 'people' | 'person' | 'pedigree' | 'fan' | 'descendants'
   | 'hourglass' | 'timeline' | 'map' | 'stats' | 'sources' | 'places'
   | 'media' | 'tasks' | 'log' | 'validate' | 'duplicates' | 'relations'
-  | 'heraldry' | 'armorial' | 'reports' | 'settings' | 'gedcom'
+  | 'heraldry' | 'armorial' | 'reports' | 'print' | 'settings' | 'gedcom'
 
 export interface Settings {
   /** Daten lebender Personen in Diagrammen und Exporten verbergen. */

@@ -15,6 +15,7 @@ import { Dashboard } from './ui/views/Dashboard'
 import { GedcomView, ReportsView, SettingsView } from './ui/views/Data'
 import { ArmorialView, HeraldryStudio } from './ui/views/Heraldry'
 import { PeopleList, PersonView } from './ui/views/People'
+import { PrintView } from './ui/views/Print'
 import { MediaView, PlacesView, SourcesView } from './ui/views/Records'
 import {
   DuplicatesView, RelationsView, ResearchLogView, TasksView, ValidationView,
@@ -75,6 +76,7 @@ const NAV: { group: string; items: NavEntry[] }[] = [
   {
     group: 'Ausgabe',
     items: [
+      { key: 'print', label: 'Druckwerkstatt', icon: '🖶' },
       { key: 'reports', label: 'Berichte', icon: '❐' },
       { key: 'gedcom', label: 'Datenaustausch', icon: '⇅' },
       { key: 'settings', label: 'Einstellungen', icon: '⚙' },
@@ -90,7 +92,7 @@ const TITLES: Record<ViewKey, string> = {
   tasks: 'Aufgaben', log: 'Forschungsprotokoll', validate: 'Plausibilitätsprüfung',
   duplicates: 'Dublettensuche', relations: 'Verwandtschaftsrechner',
   heraldry: 'Wappenwerkstatt', armorial: 'Wappenrolle', reports: 'Berichte',
-  gedcom: 'Datenaustausch', settings: 'Einstellungen',
+  print: 'Druckwerkstatt', gedcom: 'Datenaustausch', settings: 'Einstellungen',
 }
 
 function BrandMark() {
@@ -181,6 +183,7 @@ export function App() {
       case 'heraldry': return <HeraldryStudio />
       case 'armorial': return <ArmorialView />
       case 'reports': return <ReportsView />
+      case 'print': return <PrintView />
       case 'gedcom': return <GedcomView />
       case 'settings': return <SettingsView />
       default: return <Dashboard />

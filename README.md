@@ -24,6 +24,25 @@ npm test         # Prüfläufe der Kernlogik
 `dist/` ist eine reine Sammlung statischer Dateien. Sie lässt sich auf jeden
 Webspeicher legen oder mit `npm run preview` lokal öffnen.
 
+## Veröffentlichen
+
+Zwei Abläufe liegen unter `.github/workflows`:
+
+- **Prüfung** läuft bei jedem Push und bei jedem Pull Request: Typprüfung,
+  Prüfläufe, Bauen.
+- **Veröffentlichen** stellt die Anwendung auf GitHub Pages bereit. Der Ablauf
+  startet bei einem Push nach `main` und lässt sich auch von Hand aus einem
+  beliebigen Zweig anstoßen (Actions → Veröffentlichen → Run workflow).
+
+Einmalig ist im Repository unter *Settings → Pages → Build and deployment* als
+Quelle **GitHub Actions** einzustellen. Danach liegt die Anwendung unter
+`https://<benutzer>.github.io/<repository>/`.
+
+Auch dort bleibt sie serverlos: Ausgeliefert werden nur statische Dateien, der
+Bestand liegt weiterhin ausschließlich in der IndexedDB des jeweiligen
+Browsers. Wer die Adresse öffnet, sieht seine eigenen Daten – und niemand
+sonst sieht sie.
+
 Beim ersten Start wird ein Beispielbestand geladen – eine erfundene Familie aus
 der Baar mit dem Datenbild, das süddeutsche Kirchenbücher tatsächlich liefern.
 Unter *Einstellungen* lässt sich stattdessen ein leerer Bestand anlegen.
@@ -124,6 +143,34 @@ Zeichnung ist nur eine mögliche Umsetzung davon.
 - **Wappenrolle** mit Suche, Zuordnung zu Personen und Erzeugung von
   Allianzwappen aus zwei Einzelwappen
 
+### Druckwerkstatt
+
+Sieben Dokumente, jeweils auf ein Papierformat gesetzt und mit Seitenvorschau:
+
+| Dokument | Vorgabe |
+| --- | --- |
+| Ahnentafel als Poster | A3 quer, eine Seite |
+| Fächerdiagramm als Poster | A3 hoch, eine Seite |
+| Ahnenliste nach Kekulé | A4 hoch, mehrseitig |
+| Nachkommenliste | A4 hoch, mehrseitig |
+| Personenblatt | A4 hoch |
+| Familienbogen | A4 hoch |
+| Wappenblatt | A4 hoch |
+
+Papierformat (A4, A3, A2, Letter), Ausrichtung und Seitenrand sind frei
+wählbar; die Vorschau zeigt die Seite in Originalgröße.
+
+Die Ausgabe entsteht über die Druckfunktion des Browsers, in der sich
+„Als PDF sichern“ wählen lässt. Das ist bewusst so gelöst: Text bleibt
+auswählbar und durchsuchbar, Wappen und Diagramme bleiben Vektorgrafik. Eine
+selbst erzeugte Rasterdatei wäre in Bildschirmauflösung entstanden und beim
+Vergrößern zerfallen – bei einem Poster in A2 ist das der Unterschied zwischen
+brauchbar und wertlos. Damit die Wappentinkturen mitkommen, muss im Druckdialog
+„Hintergrundgrafiken“ aktiv sein.
+
+Einträge und Tabellenzeilen werden nicht über einen Seitenumbruch zerrissen,
+Generationsüberschriften bleiben bei ihrem ersten Eintrag.
+
 ### Datenaustausch
 
 - **GEDCOM einlesen**: 5.5, 5.5.1 und 7.0. Die Kodierung wird selbsttätig
@@ -185,6 +232,7 @@ Datumsangaben, Belegqualität und Orten.
 | `R` | Wappenrolle |
 | `Q` | Quellen |
 | `S` | Auswertungen |
+| `Strg`+`P` | Drucken (in der Druckwerkstatt) |
 
 ## Grenzen
 

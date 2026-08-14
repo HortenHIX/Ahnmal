@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   dateEarliest, dateLatest, dateToGedcom, dateValue, formatDate, julianToGregorian,
-  parseDate, parsePoint, yearsBetween,
+  formatDateWithPreposition, parseDate, parsePoint, yearsBetween,
 } from '../src/core/dates'
 
 describe('Datumsangaben lesen', () => {
@@ -111,5 +111,30 @@ describe('Rechnen mit Datumsangaben', () => {
     expect(dateEarliest(parseDate('vor 1800'))).toBeNull()
     expect(dateLatest(parseDate('nach 1800'))).toBeNull()
     expect(dateLatest(parseDate('vor 1800'))).toBeCloseTo(1800.5, 1)
+  })
+})
+
+describe('Präposition im Fließtext', () => {
+  it('setzt „am“ nur bei taggenauen Angaben', () => {
+    expect(formatDateWithPreposition(parseDate('14.02.1758'))).toBe('am 14.02.1758')
+  })
+
+  it('lässt die Präposition bei ungefähren Angaben weg', () => {
+    // Sonst entstünde in Berichten „am um 1730“
+    expect(formatDateWithPreposition(parseDate('um 1730'))).toBe('um 1730')
+    expect(formatDateWithPreposition(parseDate('vor 1750'))).toBe('vor 1750')
+    expect(formatDateWithPreposition(parseDate('zwischen 1720 und 1725'))).toBe('zwischen 1720 und 1725')
+  })
+
+  it('setzt „im“ bei monatsgenauen Angaben', () => {
+    expect(formatDateWithPreposition(parseDate('März 1698'), true)).toBe('im März 1698')
+  })
+
+  it('lässt reine Jahresangaben ohne Präposition', () => {
+    expect(formatDateWithPreposition(parseDate('1698'))).toBe('1698')
+  })
+
+  it('kommt ohne Datum zurecht', () => {
+    expect(formatDateWithPreposition(undefined)).toBe('')
   })
 })

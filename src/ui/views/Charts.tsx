@@ -64,6 +64,127 @@ function ExportButtons({ svgRef, name }: { svgRef: React.RefObject<SVGSVGElement
 const BOX_W = 178
 const BOX_H = 46
 
+export interface PedigreeSVGProps {
+  db: Database
+  rootId: ID
+  generations: number
+  showKekule?: boolean
+  showArms?: boolean
+  privacy?: boolean
+  /** Für Papier: helle Flächen und schwarze Schrift statt Oberflächenfarben. */
+  forPrint?: boolean
+  svgRef?: React.Ref<SVGSVGElement>
+  onSelect?: (id: ID) => void
+}
+
+/**
+ * Die Ahnentafel als reines SVG, ohne Bedienelemente. So lässt sie sich sowohl
+ * in der Ansicht als auch in der Druckwerkstatt verwenden, ohne den Aufbau
+ * zweimal zu pflegen.
+ */
+export function PedigreeSVG({
+  db, rootId, generations, showKekule = true, showArms = true, privacy = true,
+  forPrint = false, svgRef, onSelect,
+}: PedigreeSVGProps) {
+  const nodes = useMemo(
+    () => ancestorsWithKekule(db, rootId, generations - 1),
+    [db, rootId, generations],
+  )
+
+  const rows = Math.pow(2, generations - 1)
+  const vgap = 12
+  const height = rows * (BOX_H + vgap)
+  const width = generations * (BOX_W + 54)
+
+  const ink = forPrint ? '#1a1a1a' : 'var(--ink)'
+  const inkSoft = forPrint ? '#555' : 'var(--ink-soft)'
+  const line = forPrint ? '#999' : 'var(--line-strong)'
+  const paper = forPrint ? '#ffffff' : 'var(--bg-panel)'
+  const gold = forPrint ? '#8a6a12' : 'var(--gold)'
+
+  const position = (kekule: number, generation: number) => {
+    const indexInGen = kekule - Math.pow(2, generation)
+    const slots = Math.pow(2, generation)
+    return {
+      x: generation * (BOX_W + 54) + 8,
+      y: (height * (indexInGen + 0.5)) / slots - BOX_H / 2,
+    }
+  }
+
+  return (
+    <svg
+      ref={svgRef}
+      viewBox={`0 0 ${width} ${height + 20}`}
+      width={forPrint ? '100%' : width}
+      height={forPrint ? undefined : height + 20}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ display: 'block', minWidth: forPrint ? undefined : '100%' }}
+    >
+      <rect width={width} height={height + 20} fill={paper} />
+      {/* Verbindungslinien zuerst, damit sie hinter den Karten liegen */}
+      {nodes.map((n) => {
+        if (n.generation === 0) return null
+        const child = nodes.find((m) => m.kekule === Math.floor(n.kekule / 2))
+        if (!child) return null
+        const a = position(child.kekule, child.generation)
+        const b = position(n.kekule, n.generation)
+        const x1 = a.x + BOX_W
+        const y1 = a.y + BOX_H / 2
+        const x2 = b.x
+        const y2 = b.y + BOX_H / 2
+        const mid = x1 + 26
+        return (
+          <path
+            key={`l${n.kekule}`}
+            d={`M${x1} ${y1} H${mid} V${y2} H${x2}`}
+            fill="none"
+            stroke={line}
+            strokeWidth={1.4}
+          />
+        )
+      })}
+
+      {nodes.map((n) => {
+        const p = db.persons[n.personId]
+        if (!p) return null
+        const { x, y } = position(n.kekule, n.generation)
+        const { name, dates } = labelFor(p, privacy)
+        const sexColour = p.sex === 'F'
+          ? (forPrint ? '#8b1a1a' : 'var(--accent)')
+          : p.sex === 'M' ? (forPrint ? '#20487a' : 'var(--blue)') : line
+        const arms = p.armsId ? db.arms[p.armsId] : undefined
+        return (
+          <g
+            key={`${n.kekule}`}
+            transform={`translate(${x} ${y})`}
+            style={onSelect ? { cursor: 'pointer' } : undefined}
+            onClick={onSelect ? () => onSelect(p.id) : undefined}
+          >
+            <rect width={BOX_W} height={BOX_H} rx={5} fill={paper} stroke={line} strokeWidth={1} />
+            <rect width={3.5} height={BOX_H} rx={2} fill={sexColour} />
+            {showArms && arms && (
+              <g transform={`translate(${BOX_W - 30} 6) scale(0.9)`}>
+                <CoatOfArms arms={arms} size={26} relief={false} />
+              </g>
+            )}
+            <text x={11} y={19} fontSize={12.5} fontWeight={600} fill={ink}>
+              {(() => {
+                // Neben dem Wappenschild bleibt weniger Platz für den Namen
+                const limit = showArms && arms ? 20 : 25
+                return name.length > limit ? name.slice(0, limit - 1) + '…' : name
+              })()}
+            </text>
+            <text x={11} y={34} fontSize={11} fill={inkSoft}>
+              {showKekule && <tspan fill={gold} fontWeight={700}>{n.kekule} </tspan>}
+              {dates}
+            </text>
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
 export function PedigreeChart() {
   const db = useStore((s) => s.db)
   const settings = useStore((s) => s.settings)
@@ -74,26 +195,12 @@ export function PedigreeChart() {
 
   const gens = settings.pedigreeGenerations
 
-  const nodes = useMemo(() => {
-    if (!root) return []
-    return ancestorsWithKekule(db, root.id, gens - 1)
-  }, [db, root, gens])
+  const filled = useMemo(
+    () => (root ? ancestorsWithKekule(db, root.id, gens - 1).length : 0),
+    [db, root, gens],
+  )
 
   if (!root) return <Empty title="Keine Person ausgewählt">Legen Sie zuerst eine Person an.</Empty>
-
-  const rows = Math.pow(2, gens - 1)
-  const vgap = 12
-  const height = rows * (BOX_H + vgap)
-  const width = gens * (BOX_W + 54)
-
-  const position = (kekule: number, generation: number) => {
-    const indexInGen = kekule - Math.pow(2, generation)
-    const slots = Math.pow(2, generation)
-    return {
-      x: generation * (BOX_W + 54) + 8,
-      y: (height * (indexInGen + 0.5)) / slots - BOX_H / 2,
-    }
-  }
 
   return (
     <div className="view">
@@ -124,76 +231,20 @@ export function PedigreeChart() {
           <ExportButtons svgRef={svgRef} name={`Ahnentafel ${displayName(root)}`} />
         </div>
 
-        <svg ref={svgRef} width={width} height={height + 20} style={{ display: 'block', minWidth: '100%' }}>
-          <rect width={width} height={height + 20} fill="var(--bg-panel)" />
-          {/* Verbindungslinien zuerst, damit sie hinter den Karten liegen */}
-          {nodes.map((n) => {
-            if (n.generation === 0) return null
-            const child = nodes.find((m) => m.kekule === Math.floor(n.kekule / 2))
-            if (!child) return null
-            const a = position(child.kekule, child.generation)
-            const b = position(n.kekule, n.generation)
-            const x1 = a.x + BOX_W
-            const y1 = a.y + BOX_H / 2
-            const x2 = b.x
-            const y2 = b.y + BOX_H / 2
-            const mid = x1 + 26
-            return (
-              <path
-                key={`l${n.kekule}`}
-                d={`M${x1} ${y1} H${mid} V${y2} H${x2}`}
-                fill="none"
-                stroke="var(--line-strong)"
-                strokeWidth={1.4}
-              />
-            )
-          })}
-
-          {nodes.map((n) => {
-            const p = db.persons[n.personId]
-            if (!p) return null
-            const { x, y } = position(n.kekule, n.generation)
-            const { name, dates } = labelFor(p, settings.privacyMode)
-            const sexColour = p.sex === 'F' ? 'var(--accent)' : p.sex === 'M' ? 'var(--blue)' : 'var(--line-strong)'
-            const arms = p.armsId ? db.arms[p.armsId] : undefined
-            return (
-              <g
-                key={`${n.kekule}`}
-                transform={`translate(${x} ${y})`}
-                style={{ cursor: 'pointer' }}
-                onClick={() => selectPerson(p.id, 'person')}
-              >
-                <rect
-                  width={BOX_W} height={BOX_H} rx={5}
-                  fill="var(--bg-panel)" stroke="var(--line-strong)" strokeWidth={1}
-                />
-                <rect width={3.5} height={BOX_H} rx={2} fill={sexColour} />
-                {settings.showArms && arms && (
-                  <g transform={`translate(${BOX_W - 30} 6) scale(0.9)`}>
-                    <CoatOfArms arms={arms} size={26} relief={false} />
-                  </g>
-                )}
-                <text x={11} y={19} fontSize={12.5} fontWeight={600} fill="var(--ink)">
-                  {(() => {
-                    // Neben dem Wappenschild bleibt weniger Platz für den Namen
-                    const limit = settings.showArms && arms ? 20 : 25
-                    return name.length > limit ? name.slice(0, limit - 1) + '…' : name
-                  })()}
-                </text>
-                <text x={11} y={34} fontSize={11} fill="var(--ink-soft)">
-                  {settings.showKekule && (
-                    <tspan fill="var(--gold)" fontWeight={700}>{n.kekule} </tspan>
-                  )}
-                  {dates}
-                </text>
-              </g>
-            )
-          })}
-        </svg>
+        <PedigreeSVG
+          db={db}
+          rootId={root.id}
+          generations={gens}
+          showKekule={settings.showKekule}
+          showArms={settings.showArms}
+          privacy={settings.privacyMode}
+          svgRef={svgRef}
+          onSelect={(id) => selectPerson(id, 'person')}
+        />
       </div>
 
       <p style={{ color: 'var(--ink-faint)', fontSize: 12, marginTop: 10 }}>
-        {nodes.length} von {Math.pow(2, gens) - 1} möglichen Ahnenstellen besetzt.
+        {filled} von {Math.pow(2, gens) - 1} möglichen Ahnenstellen besetzt.
         Fehlende Vorfahren zeigen an, wo weiter zu forschen ist.
       </p>
     </div>
@@ -204,19 +255,23 @@ export function PedigreeChart() {
 // Fächerdiagramm
 // ---------------------------------------------------------------------------
 
-export function FanChart() {
-  const db = useStore((s) => s.db)
-  const settings = useStore((s) => s.settings)
-  const setSettings = useStore((s) => s.setSettings)
-  const selectPerson = useStore((s) => s.selectPerson)
-  const root = useRoot()
-  const svgRef = useRef<SVGSVGElement>(null)
-  const [sweep, setSweep] = useState(270)
+export interface FanSVGProps {
+  db: Database
+  rootId: ID
+  generations: number
+  sweep?: number
+  privacy?: boolean
+  forPrint?: boolean
+  svgRef?: React.Ref<SVGSVGElement>
+  onSelect?: (id: ID) => void
+}
 
-  const gens = settings.fanGenerations
-  const nodes = useMemo(() => (root ? ancestorsWithKekule(db, root.id, gens - 1) : []), [db, root, gens])
-
-  if (!root) return <Empty title="Keine Person ausgewählt" />
+/** Das Fächerdiagramm als reines SVG – für die Ansicht und für den Druck. */
+export function FanSVG({
+  db, rootId, generations: gens, sweep = 270, privacy = true,
+  forPrint = false, svgRef, onSelect,
+}: FanSVGProps) {
+  const nodes = useMemo(() => ancestorsWithKekule(db, rootId, gens - 1), [db, rootId, gens])
 
   const size = 760
   const cx = size / 2
@@ -235,62 +290,59 @@ export function FanChart() {
     return `M${p(r0, a0)} A${r0} ${r0} 0 ${large} 1 ${p(r0, a1)} L${p(r1, a1)} A${r1} ${r1} 0 ${large} 0 ${p(r1, a0)} Z`
   }
 
-  /** Farbe nach Ahnenlinie: väterlich warm, mütterlich kühl. */
+  const ink = forPrint ? '#1a1a1a' : 'var(--ink)'
+  const inkSoft = forPrint ? '#555' : 'var(--ink-soft)'
+  const paper = forPrint ? '#ffffff' : 'var(--bg-panel)'
+
+  /** Farbe nach Ahnenlinie: väterlich kühl, mütterlich warm. */
   const colourFor = (kekule: number, generation: number) => {
-    if (generation === 0) return 'var(--gold-soft)'
+    if (generation === 0) return forPrint ? '#f5eeda' : 'var(--gold-soft)'
     const paternal = kekule < Math.pow(2, generation) * 1.5
     const depth = 1 - generation / (gens + 1)
+    const pct = paternal ? 18 + depth * 26 : 16 + depth * 24
+    if (forPrint) {
+      // Im Druck ohne color-mix rechnen, damit auch ältere Druckwege stimmen
+      const mix = (a: [number, number, number], p: number) =>
+        `rgb(${a.map((v) => Math.round(255 + (v - 255) * (p / 100))).join(' ')})`
+      return paternal ? mix([32, 72, 122], pct) : mix([139, 26, 26], pct)
+    }
     return paternal
-      ? `color-mix(in srgb, var(--blue) ${18 + depth * 26}%, var(--bg-panel))`
-      : `color-mix(in srgb, var(--accent) ${16 + depth * 24}%, var(--bg-panel))`
+      ? `color-mix(in srgb, var(--blue) ${pct}%, var(--bg-panel))`
+      : `color-mix(in srgb, var(--accent) ${pct}%, var(--bg-panel))`
   }
 
   return (
-    <div className="view">
-      <div className="view-head">
-        <h1>Fächerdiagramm</h1>
-        <p>Väterliche Linien blau, mütterliche rot – Lücken werden sofort sichtbar.</p>
-      </div>
+    <svg
+      ref={svgRef}
+      width={forPrint ? '100%' : size}
+      height={forPrint ? undefined : size}
+      viewBox={`0 0 ${size} ${size}`}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ display: 'block', margin: '0 auto', maxWidth: '100%' }}
+    >
+      <rect width={size} height={size} fill={paper} />
+      {nodes.map((n) => {
+        const p = db.persons[n.personId]
+        if (!p) return null
+        const { name, dates } = labelFor(p, privacy)
 
-      <div className="chart-wrap">
-        <div className="toolbar">
-          <strong>{displayName(root)}</strong>
-          <label>
-            Generationen
-            <input type="range" min={3} max={9} value={gens}
-              onChange={(e) => setSettings({ fanGenerations: Number(e.target.value) })} />
-            {gens}
-          </label>
-          <label>
-            Öffnung
-            <input type="range" min={180} max={360} step={15} value={sweep}
-              onChange={(e) => setSweep(Number(e.target.value))} />
-            {sweep}°
-          </label>
-          <div style={{ flex: 1 }} />
-          <ExportButtons svgRef={svgRef} name={`Fächer ${displayName(root)}`} />
-        </div>
-
-        <svg ref={svgRef} width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block', margin: '0 auto', maxWidth: '100%' }}>
-          <rect width={size} height={size} fill="var(--bg-panel)" />
-          {nodes.map((n) => {
-            const p = db.persons[n.personId]
-            if (!p) return null
-            const { name, dates } = labelFor(p, settings.privacyMode)
-
-            if (n.generation === 0) {
-              return (
-                <g key="root" style={{ cursor: 'pointer' }} onClick={() => selectPerson(p.id, 'person')}>
-                  <circle cx={cx} cy={cy} r={innerR} fill="var(--gold-soft)" stroke="var(--gold)" strokeWidth={1.5} />
-                  <text x={cx} y={cy - 2} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--ink)">
-                    {(primaryName(p)?.surname ?? '').slice(0, 12)}
-                  </text>
-                  <text x={cx} y={cy + 11} textAnchor="middle" fontSize={9.5} fill="var(--ink-soft)">
-                    {(primaryName(p)?.given ?? '').split(' ')[0]}
-                  </text>
-                </g>
-              )
-            }
+        if (n.generation === 0) {
+          return (
+            <g
+              key="root"
+              style={onSelect ? { cursor: 'pointer' } : undefined}
+              onClick={onSelect ? () => onSelect(p.id) : undefined}
+            >
+              <circle cx={cx} cy={cy} r={innerR} fill={colourFor(1, 0)} stroke={forPrint ? '#8a6a12' : 'var(--gold)'} strokeWidth={1.5} />
+              <text x={cx} y={cy - 2} textAnchor="middle" fontSize={11} fontWeight={700} fill={ink}>
+                {(primaryName(p)?.surname ?? '').slice(0, 12)}
+              </text>
+              <text x={cx} y={cy + 11} textAnchor="middle" fontSize={9.5} fill={inkSoft}>
+                {(primaryName(p)?.given ?? '').split(' ')[0]}
+              </text>
+            </g>
+          )
+        }
 
             const slots = Math.pow(2, n.generation)
             const index = n.kekule - slots
@@ -315,26 +367,79 @@ export function FanChart() {
             const short = name.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name
             const showDates = !!dates && n.generation < 6 && (tangential ? arcLength > 46 : ringW > 40)
 
-            return (
-              <g key={n.kekule} style={{ cursor: 'pointer' }} onClick={() => selectPerson(p.id, 'person')}>
-                <path
-                  d={arcPath(n.generation, index, slots)}
-                  fill={colourFor(n.kekule, n.generation)}
-                  stroke="var(--bg-panel)"
-                  strokeWidth={1.5}
-                />
-                <g transform={`translate(${tx} ${ty}) rotate(${rot})`}>
-                  <text textAnchor="middle" fontSize={fontSize} fontWeight={600} fill="var(--ink)" y={showDates ? -2 : 3}>
-                    {short}
-                  </text>
-                  {showDates && (
-                    <text textAnchor="middle" fontSize={fontSize - 2} fill="var(--ink-soft)" y={9}>{dates}</text>
-                  )}
-                </g>
-              </g>
-            )
-          })}
-        </svg>
+        return (
+          <g
+            key={n.kekule}
+            style={onSelect ? { cursor: 'pointer' } : undefined}
+            onClick={onSelect ? () => onSelect(p.id) : undefined}
+          >
+            <path
+              d={arcPath(n.generation, index, slots)}
+              fill={colourFor(n.kekule, n.generation)}
+              stroke={paper}
+              strokeWidth={1.5}
+            />
+            <g transform={`translate(${tx} ${ty}) rotate(${rot})`}>
+              <text textAnchor="middle" fontSize={fontSize} fontWeight={600} fill={ink} y={showDates ? -2 : 3}>
+                {short}
+              </text>
+              {showDates && (
+                <text textAnchor="middle" fontSize={fontSize - 2} fill={inkSoft} y={9}>{dates}</text>
+              )}
+            </g>
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+export function FanChart() {
+  const db = useStore((s) => s.db)
+  const settings = useStore((s) => s.settings)
+  const setSettings = useStore((s) => s.setSettings)
+  const selectPerson = useStore((s) => s.selectPerson)
+  const root = useRoot()
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [sweep, setSweep] = useState(270)
+
+  if (!root) return <Empty title="Keine Person ausgewählt" />
+
+  return (
+    <div className="view">
+      <div className="view-head">
+        <h1>Fächerdiagramm</h1>
+        <p>Väterliche Linien blau, mütterliche rot – Lücken werden sofort sichtbar.</p>
+      </div>
+
+      <div className="chart-wrap">
+        <div className="toolbar">
+          <strong>{displayName(root)}</strong>
+          <label>
+            Generationen
+            <input type="range" min={3} max={9} value={settings.fanGenerations}
+              onChange={(e) => setSettings({ fanGenerations: Number(e.target.value) })} />
+            {settings.fanGenerations}
+          </label>
+          <label>
+            Öffnung
+            <input type="range" min={180} max={360} step={15} value={sweep}
+              onChange={(e) => setSweep(Number(e.target.value))} />
+            {sweep}°
+          </label>
+          <div style={{ flex: 1 }} />
+          <ExportButtons svgRef={svgRef} name={`Fächer ${displayName(root)}`} />
+        </div>
+
+        <FanSVG
+          db={db}
+          rootId={root.id}
+          generations={settings.fanGenerations}
+          sweep={sweep}
+          privacy={settings.privacyMode}
+          svgRef={svgRef}
+          onSelect={(id) => selectPerson(id, 'person')}
+        />
       </div>
     </div>
   )

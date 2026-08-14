@@ -421,11 +421,11 @@ table.data tbody tr { cursor: pointer; }
 .issue .sev.warning { background: var(--warn); }
 .issue .sev.hint { background: var(--ink-faint); }
 
+/* Die Regeln für den Druck stehen gesammelt in print.css. */
 @media print {
-  .nav, .brand, .topbar, .toolbar, .btn { display: none !important; }
-  .app { display: block; height: auto; }
-  .main { overflow: visible; }
-  .view { padding: 0; max-width: none; }
-  .chart-wrap, .panel { border: 0; box-shadow: none; }
-  body { background: #fff; }
+  .chart-wrap,
+  .panel {
+    border: 0;
+    box-shadow: none;
+  }
 }
