@@ -1,0 +1,330 @@
+/* Satz für Papier.
+   Die Ausgabe entsteht über die Druckfunktion des Browsers – dort wird
+   „Als PDF sichern“ gewählt. Das liefert echte Vektorgrafik mit auswählbarem
+   Text und eingebetteten Wappen, während eine erzeugte Rasterdatei am
+   Bildschirm entstünde und beim Vergrößern zerfiele. */
+
+.sheet {
+  background: #fff;
+  color: #1a1a1a;
+  font-family: var(--serif);
+  box-shadow: 0 3px 18px rgba(35, 32, 26, 0.22);
+  margin: 0 auto 14mm;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Am Bildschirm werden die Seiten verkleinert gezeigt, damit eine ganze
+   Seite in den Arbeitsbereich passt. Die Verkleinerung geschieht über `zoom`,
+   weil sie dann auch den Platzbedarf verringert. */
+.print-preview {
+  padding: 10px 0 30px;
+}
+
+.sheet h1,
+.sheet h2,
+.sheet h3 {
+  font-family: var(--serif);
+  color: #1a1a1a;
+  margin: 0;
+}
+
+.doc-title {
+  font-size: 22pt;
+  letter-spacing: 0.01em;
+  text-align: center;
+  margin-bottom: 2mm;
+}
+
+.doc-subtitle {
+  text-align: center;
+  font-size: 11pt;
+  font-style: italic;
+  color: #555;
+  margin-bottom: 6mm;
+}
+
+.doc-rule {
+  border: 0;
+  border-top: 1.2pt solid #1a1a1a;
+  margin: 3mm 0 5mm;
+}
+
+.doc-rule.thin {
+  border-top-width: 0.5pt;
+  border-top-color: #999;
+}
+
+.doc-footer {
+  margin-top: 6mm;
+  padding-top: 2mm;
+  border-top: 0.5pt solid #999;
+  font-size: 8pt;
+  color: #666;
+  display: flex;
+  justify-content: space-between;
+  gap: 8mm;
+}
+
+/* --- Ahnenliste ---------------------------------------------------------- */
+
+.gen-heading {
+  font-size: 12pt;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 6mm 0 2mm;
+  padding-bottom: 1mm;
+  border-bottom: 0.5pt solid #999;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.entry {
+  display: grid;
+  grid-template-columns: 14mm 1fr;
+  gap: 0 2mm;
+  margin-bottom: 3mm;
+  font-size: 9.5pt;
+  line-height: 1.42;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.entry .num {
+  font-weight: 700;
+  color: #8a6a12;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.entry .who {
+  font-weight: 700;
+  font-size: 10.5pt;
+}
+
+.entry .line {
+  color: #333;
+}
+
+.entry .src {
+  color: #666;
+  font-size: 8.5pt;
+  font-style: italic;
+}
+
+/* --- Formularbögen ------------------------------------------------------- */
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 30mm 1fr;
+  gap: 0;
+  font-size: 9.5pt;
+  border: 0.8pt solid #1a1a1a;
+}
+
+.form-grid > div {
+  padding: 1.4mm 2mm;
+  border-bottom: 0.4pt solid #bbb;
+  min-height: 6.4mm;
+}
+
+.form-grid > div:nth-child(odd) {
+  background: #f4f1ea;
+  font-weight: 600;
+  border-right: 0.4pt solid #bbb;
+}
+
+.form-grid > div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.form-section {
+  font-size: 10pt;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin: 5mm 0 1.5mm;
+  break-after: avoid;
+}
+
+table.form-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+}
+
+table.form-table th {
+  background: #f4f1ea;
+  text-align: left;
+  font-size: 8pt;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1.4mm 2mm;
+  border: 0.4pt solid #999;
+}
+
+table.form-table td {
+  padding: 1.4mm 2mm;
+  border: 0.4pt solid #bbb;
+  vertical-align: top;
+}
+
+/* --- Nachkommenliste ----------------------------------------------------- */
+
+.desc-entry {
+  font-size: 9.5pt;
+  line-height: 1.45;
+  margin-bottom: 1.6mm;
+  break-inside: avoid;
+}
+
+.desc-entry .marker {
+  font-weight: 700;
+  color: #8a6a12;
+  font-variant-numeric: tabular-nums;
+  margin-right: 1.5mm;
+}
+
+.desc-entry .spouse {
+  color: #444;
+  font-size: 9pt;
+}
+
+/* --- Wappenblatt --------------------------------------------------------- */
+
+.arms-plate {
+  text-align: center;
+}
+
+/* Das Wappen wird über die verfügbare Höhe eingepasst und behält dabei sein
+   Seitenverhältnis. */
+.arms-plate-figure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.arms-plate-figure svg {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+}
+
+.arms-plate .arms-name {
+  font-size: 26pt;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin: 6mm 0 2mm;
+}
+
+.arms-plate .arms-blazon {
+  font-size: 12pt;
+  font-style: italic;
+  line-height: 1.55;
+  max-width: 120mm;
+  margin: 0 auto 6mm;
+}
+
+.arms-plate .arms-meta {
+  display: grid;
+  grid-template-columns: 34mm 1fr;
+  gap: 1.2mm 3mm;
+  text-align: left;
+  max-width: 130mm;
+  margin: 0 auto;
+  font-size: 9.5pt;
+}
+
+.arms-plate .arms-meta dt {
+  font-size: 8pt;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #666;
+  padding-top: 0.6mm;
+}
+
+.arms-plate .arms-meta dd {
+  margin: 0;
+}
+
+/* --- Poster -------------------------------------------------------------- */
+
+.poster {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.poster-chart {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.poster-chart svg {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* --- Beim tatsächlichen Drucken ------------------------------------------ */
+
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+
+  .app {
+    display: block;
+    height: auto;
+  }
+
+  .brand,
+  .topbar,
+  .nav,
+  .toolbar,
+  .no-print {
+    display: none !important;
+  }
+
+  .main {
+    overflow: visible;
+  }
+
+  .view {
+    padding: 0;
+    max-width: none;
+  }
+
+  .print-preview {
+    zoom: 1 !important;
+    padding: 0;
+  }
+
+  .sheet {
+    box-shadow: none;
+    margin: 0;
+    width: auto !important;
+    min-height: 0 !important;
+    /* Die Seitenränder setzt bereits die Regel @page */
+    padding: 0 !important;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .sheet:last-child {
+    break-after: auto;
+    page-break-after: avoid;
+  }
+
+  /* Farbflächen müssen mitgedruckt werden, sonst verschwinden
+     Wappentinkturen und Tabellenköpfe */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
