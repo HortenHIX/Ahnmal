@@ -1,0 +1,27 @@
+{
+  "name": "wappenbrief",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Wappenbrief – Ahnenforschung und Heraldik. Lokal-first Genealogie-Software mit Blasonierungs-Parser und Wappen-Renderer.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^7.0.0",
+    "vitest": "^4.1.10"
+  }
+}
